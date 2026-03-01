@@ -1,0 +1,13 @@
+{
+  "name": "payment-gateway",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "npm --workspace apps/backend run start:dev",
+    "test:backend": "npm --workspace apps/backend run test",
+    "lint:backend": "npm --workspace apps/backend run lint"
+  }
+}
