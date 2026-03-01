@@ -1,6 +1,5 @@
 export class CreateTransactionResponseDto {
   transactionId!: string;
-  reference!: string;
   status!: 'PENDING';
   amounts!: {
     productAmountInCents: number;
