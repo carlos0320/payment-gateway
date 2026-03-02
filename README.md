@@ -435,8 +435,8 @@ The `app.module.ts` uses the `USE_DYNAMO` environment variable to switch between
 | `DYNAMO_ENDPOINT`        | Local DynamoDB endpoint (optional)   | `http://localhost:8000`                   |
 | `PROVIDER_BASE_URL`         | Payment provider API base URL        | `https://api-sandbox.co.uat.wompi.dev/v1` |
 | `PROVIDER_PUBLIC_KEY`       | Provider public key                  | `pub_stagtest_...`                        |
-| `PROVIDER_PRIVATE_KEY`      | Provider private key                 | *(do not commit)*                         |
-| `PROVIDER_INTEGRITY_SECRET` | Provider integrity secret for signatures| *(do not commit)*                      |
+| `PROVIDER_PRIVATE_KEY`      | Provider private key                 | `prv_stagtest_...`                         |
+| `PROVIDER_INTEGRITY_SECRET` | Provider integrity secret for signatures| `stagtest_integrity_...`                      |
 
 Copy `.env.example` to `.env`:
 
@@ -719,6 +719,14 @@ aws s3 sync dist "s3://$BUCKET" --delete --profile <YOUR_AWS_PROFILE>
 
 #### Create Origin Access Control (OAC)
 
+An OAC lets CloudFront authenticate requests to a **private** S3 bucket using AWS Signature V4. Without it, you'd have to make the bucket public — exposing files directly via the S3 URL and bypassing CloudFront entirely (no caching, no HTTPS on your domain, no geographic restrictions).
+
+**What it solves:**
+- The S3 bucket stays fully private — `Block all public access` remains enabled
+- Only CloudFront can read objects from the bucket; direct S3 URLs return `403 Forbidden`
+- Uses SigV4 signing (`SigningProtocol: sigv4`, `SigningBehavior: always`) so every request CloudFront makes to S3 is cryptographically signed
+- OAC is the AWS-recommended replacement for the legacy Origin Access Identity (OAI)
+
 ```bash
 aws cloudfront create-origin-access-control \
   --profile <YOUR_AWS_PROFILE> \
@@ -732,6 +740,25 @@ aws cloudfront create-origin-access-control \
 ```
 
 #### Create CloudFront distribution
+
+CloudFront is a CDN that sits in front of the S3 bucket. It caches the SPA files at edge locations worldwide, serves them over HTTPS, and handles SPA routing quirks.
+
+**Key configuration choices explained:**
+
+| Setting | Value | Why |
+| ------- | ----- | --- |
+| `ViewerProtocolPolicy` | `redirect-to-https` | Forces all HTTP traffic to HTTPS — no insecure access |
+| `Compress` | `true` | Enables automatic gzip/brotli compression for JS, CSS, HTML — smaller payloads, faster loads |
+| `DefaultRootObject` | `index.html` | When a user hits the root URL (`/`), CloudFront serves `index.html` instead of listing bucket contents |
+| `AllowedMethods` | `GET, HEAD` | Static SPA only needs read methods — no POST/PUT/DELETE needed at the CDN layer |
+| `ForwardedValues.QueryString` | `true` | Passes query strings through (needed if the SPA uses URL query params for state) |
+| `CustomErrorResponses` | 403/404 → `/index.html` (200) | **Critical for SPA routing** — explained below |
+
+**Why `CustomErrorResponses` matters for a SPA:**
+
+When a user navigates directly to a deep route like `/checkout` or refreshes the page on `/result`, CloudFront asks S3 for a file at `/checkout` or `/result`. Those files don't exist in S3 — only `index.html` and the compiled JS/CSS assets do. S3 returns a `403` (private bucket) or `404`. Without the error response override, the user sees an XML error page.
+
+The `CustomErrorResponses` configuration intercepts those 403/404 errors and instead returns `/index.html` with a `200` status. The browser loads the SPA, Vue reads the current URL, and the Vuex state machine renders the correct view. This is the standard pattern for deploying any SPA (React, Vue, Angular) on S3 + CloudFront.
 
 ```bash
 BUCKET=<YOUR_BUCKET_NAME>
@@ -778,9 +805,15 @@ aws cloudfront create-distribution \
   }'
 ```
 
-> The `CustomErrorResponses` redirect 403/404 to `/index.html` so that SPA client-side routing works correctly.
-
 #### Attach bucket policy (allow CloudFront to read)
+
+Creating the OAC and the distribution is not enough by itself — S3 still doesn't know it should trust this specific CloudFront distribution. The bucket policy is the missing link: it grants `s3:GetObject` permission **only** to the CloudFront service principal, and **only** when the request comes from your specific distribution (verified via the `AWS:SourceArn` condition).
+
+Without this policy, CloudFront's signed requests to S3 would still be denied. With it, the access chain is complete:
+
+```
+User → CloudFront (HTTPS) → signs request with OAC (SigV4) → S3 checks bucket policy → serves file
+```
 
 ```bash
 BUCKET=<YOUR_BUCKET_NAME>
