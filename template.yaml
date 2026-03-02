@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: payment-gateway backend (NestJS + DynamoDB + HTTP API)
+
+Parameters:
+  WompiPublicKey:
+    Type: String
+    NoEcho: true
+  WompiPrivateKey:
+    Type: String
+    NoEcho: true
+  WompiIntegritySecret:
+    Type: String
+    NoEcho: true
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: nodejs20.x
+    Architectures:
+      - arm64
+    Environment:
+      Variables:
+        USE_DYNAMO: "true"
+        DYNAMO_REGION: !Ref AWS::Region
+        DYNAMO_PRODUCTS_TABLE: !Ref ProductsTable
+        DYNAMO_TRANSACTIONS_TABLE: !Ref TransactionsTable
+        DYNAMO_SETTINGS_TABLE: !Ref SettingsTable
+        WOMPI_BASE_URL: "https://api-sandbox.co.uat.wompi.dev/v1"
+        WOMPI_PUBLIC_KEY: !Ref WompiPublicKey
+        WOMPI_PRIVATE_KEY: !Ref WompiPrivateKey
+        WOMPI_INTEGRITY_SECRET: !Ref WompiIntegritySecret
+
+Resources:
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - GET
+          - POST
+          - PATCH
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+
+  BackendFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: makefile
+    Properties:
+      CodeUri: apps/backend/
+      Handler: dist/lambda.handler
+      Events:
+        Any:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProductsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TransactionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SettingsTable
+
+  ProductsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: productId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: productId
+          KeyType: HASH
+
+  TransactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: transactionId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: transactionId
+          KeyType: HASH
+
+  SettingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: settingsKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: settingsKey
+          KeyType: HASH
+
+Outputs:
+  ApiUrl:
+    Description: "HTTP API base URL"
+    Value: !GetAtt HttpApi.ApiEndpoint

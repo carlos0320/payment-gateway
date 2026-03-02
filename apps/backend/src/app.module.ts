@@ -7,6 +7,14 @@ import { InMemoryProductRepository } from './adapters/persistence/in-memory/in-m
 import { InMemorySettingsRepository } from './adapters/persistence/in-memory/in-memory-settings.repository';
 import { InMemoryTransactionRepository } from './adapters/persistence/in-memory/in-memory-transaction.repository';
 
+import { DynamoProductRepository } from './adapters/persistence/dynamodb/dynamo-product.repository';
+import { DynamoTransactionRepository } from './adapters/persistence/dynamodb/dynamo-transaction.repository';
+import { DynamoSettingsRepository } from './adapters/persistence/dynamodb/dynamo-settings.repository';
+import {
+  dynamoProviders,
+  DYNAMO_DOC,
+} from './adapters/persistence/dynamodb/dynamo.providers';
+
 import { WompiGatewayHttp } from './adapters/wompi/wompi.gateway.http';
 import { UuidGenerator } from './adapters/id/uuid-generator';
 
@@ -30,17 +38,51 @@ import { GetTransactionUseCase } from './application/use-cases/get-transaction/g
   controllers: [ProductsController, TransactionsController],
   providers: [
     // Concrete classes
+    ...dynamoProviders,
     InMemoryProductRepository,
     InMemorySettingsRepository,
     InMemoryTransactionRepository,
     UuidGenerator,
 
     // Port bindings
-    { provide: PRODUCT_REPOSITORY, useExisting: InMemoryProductRepository },
-    { provide: SETTINGS_REPOSITORY, useExisting: InMemorySettingsRepository },
+    {
+      provide: PRODUCT_REPOSITORY,
+      useFactory: (doc) => {
+        const useDynamo = process.env.USE_DYNAMO === 'true';
+        if (!useDynamo) return new InMemoryProductRepository();
+
+        return new DynamoProductRepository(
+          doc,
+          process.env.DYNAMO_PRODUCTS_TABLE || 'Products',
+        );
+      },
+      inject: [DYNAMO_DOC],
+    },
+    {
+      provide: SETTINGS_REPOSITORY,
+      useFactory: (doc) => {
+        const useDynamo = process.env.USE_DYNAMO === 'true';
+        if (!useDynamo) return new InMemorySettingsRepository();
+
+        return new DynamoSettingsRepository(
+          doc,
+          process.env.DYNAMO_SETTINGS_TABLE || 'Settings',
+        );
+      },
+      inject: [DYNAMO_DOC],
+    },
     {
       provide: TRANSACTION_REPOSITORY,
-      useExisting: InMemoryTransactionRepository,
+      useFactory: (doc) => {
+        const useDynamo = process.env.USE_DYNAMO === 'true';
+        if (!useDynamo) return new InMemoryTransactionRepository();
+
+        return new DynamoTransactionRepository(
+          doc,
+          process.env.DYNAMO_TRANSACTIONS_TABLE || 'Transactions',
+        );
+      },
+      inject: [DYNAMO_DOC],
     },
     { provide: ID_GENERATOR, useExisting: UuidGenerator },
 
@@ -58,14 +100,12 @@ import { GetTransactionUseCase } from './application/use-cases/get-transaction/g
     // Use cases
     {
       provide: ListProductsUseCase,
-      useFactory: (repo: InMemoryProductRepository) =>
-        new ListProductsUseCase(repo),
+      useFactory: (repo) => new ListProductsUseCase(repo),
       inject: [PRODUCT_REPOSITORY],
     },
     {
       provide: GetProductUseCase,
-      useFactory: (repo: InMemoryProductRepository) =>
-        new GetProductUseCase(repo),
+      useFactory: (repo) => new GetProductUseCase(repo),
       inject: [PRODUCT_REPOSITORY],
     },
     {
