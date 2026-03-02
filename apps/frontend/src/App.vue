@@ -27,8 +27,25 @@ const step = computed(() => store.state.checkout.step)
 
 <style>
 .app {
-  max-width: 420px;
   margin: 0 auto;
   padding: 16px;
+}
+
+section {
+  width: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  display: block;
+  margin: 0;
+}
+
+.title {
+  text-align: left;
+  margin: 0 0 12px;
+}
+
+.grid {
+  justify-content: start;
+  align-content: start;
 }
 </style>

@@ -78,4 +78,23 @@ async function backToProducts() {
   margin-top: 12px;
 }
 .primary:disabled { opacity: .5; }
+
+.box {
+  border: 1px solid #eee;
+  border-radius: 14px;
+  padding: 12px;
+  background: #fafafa;
+  color: #111;
+}
+
+.row span {
+  color: #444;
+  font-weight: 600;
+}
+
+.row strong {
+  color: #111;
+  font-weight: 800;
+  text-transform: uppercase;
+}
 </style>

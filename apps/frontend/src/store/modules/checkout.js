@@ -230,7 +230,6 @@ export default {
       const DELAY_MS = 2000
 
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-				console.log('POLL', attempt, state.transactionId)
         const { data } = await backendApi.getTransaction(state.transactionId)
 
         commit('setStatus', data.status)

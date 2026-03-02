@@ -36,8 +36,6 @@ export class WompiGatewayHttp implements WompiGatewayPort {
       ip: input.ip,
     };
 
-    console.log('BODYYY!!!', body);
-
     const res = await fetch(url, {
       method: 'POST',
       headers: {
