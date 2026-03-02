@@ -9,5 +9,9 @@
     "dev:backend": "npm --workspace apps/backend run start:dev",
     "test:backend": "npm --workspace apps/backend run test",
     "lint:backend": "npm --workspace apps/backend run lint"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "vuex": "^4.1.0"
   }
 }
