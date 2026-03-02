@@ -11,7 +11,9 @@ Full-stack payment gateway monorepo built with **NestJS** (backend) and **Vue 3*
 - [Getting Started](#getting-started)
 - [Frontend](#frontend)
 - [Backend](#backend)
+- [Payment Flow (End-to-End)](#payment-flow-end-to-end)
 - [Infrastructure](#infrastructure)
+- [Deployment](#deployment)
 
 ---
 
@@ -387,15 +389,89 @@ The `app.module.ts` uses the `USE_DYNAMO` environment variable to switch between
 | `DYNAMO_TRANSACTIONS_TABLE` | Transactions table name           | `Transactions`                            |
 | `DYNAMO_SETTINGS_TABLE`  | Settings table name                  | `Settings`                                |
 | `DYNAMO_ENDPOINT`        | Local DynamoDB endpoint (optional)   | `http://localhost:8000`                   |
-| `WOMPI_BASE_URL`         | Payment provider API base URL        | `https://api-sandbox.co.uat.wompi.dev/v1` |
-| `WOMPI_PUBLIC_KEY`       | Provider public key                  | `pub_stagtest_...`                        |
-| `WOMPI_PRIVATE_KEY`      | Provider private key                 | *(do not commit)*                         |
-| `WOMPI_INTEGRITY_SECRET` | Provider integrity secret for signatures| *(do not commit)*                      |
+| `PROVIDER_BASE_URL`         | Payment provider API base URL        | `https://api-sandbox.co.uat.wompi.dev/v1` |
+| `PROVIDER_PUBLIC_KEY`       | Provider public key                  | `pub_stagtest_...`                        |
+| `PROVIDER_PRIVATE_KEY`      | Provider private key                 | *(do not commit)*                         |
+| `PROVIDER_INTEGRITY_SECRET` | Provider integrity secret for signatures| *(do not commit)*                      |
 
 Copy `.env.example` to `.env`:
 
 ```bash
 cp apps/backend/.env.example apps/backend/.env
+```
+
+---
+
+## Payment Flow (End-to-End)
+
+The core pattern is **tokenize in client, charge in server, poll final status, persist + update stock**.
+
+### 1. User selects a product + quantity
+
+Frontend loads products from the backend (`GET /products`). User picks a product and quantity.
+
+### 2. User enters delivery + customer data
+
+Frontend collects: email, full name, phone, address, city, region, country.
+
+Frontend calls the backend to create an internal transaction (`POST /transactions`) with status `PENDING`.
+
+Backend calculates amounts (product price * quantity + base fee + delivery fee) and stores the transaction record in DynamoDB.
+
+### 3. Frontend tokenizes the credit card
+
+Frontend sends card details **directly** to the provider's token endpoint using the public key. The provider returns a card token (safe to forward to the backend). **The system never stores card number or CVC.**
+
+### 4. Frontend requests payment
+
+Frontend calls the backend: `POST /transactions/:id/pay` sending:
+- `cardToken` (from step 3)
+- `installments`
+
+### 5. Backend creates the payment with the provider
+
+1. Moves internal transaction to `PROCESSING`
+2. Generates the integrity signature server-side: `SHA256(reference + amountInCents + currency + integritySecret)`
+3. Calls the provider's "create transaction" API using the **private key**, sending:
+   - Amount in cents, currency
+   - Unique reference (transaction ID)
+   - Customer email
+   - Payment method (card token + installments)
+   - Acceptance tokens (contract agreements)
+   - Client IP
+4. Provider responds with a provider transaction ID and an initial status (`PENDING`)
+
+### 6. Backend updates internal transaction + stock
+
+1. Stores the provider transaction ID and current provider status
+2. Polls the provider status on subsequent `GET /transactions/:id` calls
+3. When the provider reaches a final status:
+   - `APPROVED` → internal status `SUCCESS`
+   - `DECLINED` / `ERROR` / `VOIDED` → internal status `FAILED`
+4. On `SUCCESS`: backend decrements stock **atomically** using a DynamoDB `ConditionExpression` (prevents overselling without locks)
+
+### 7. Frontend shows result
+
+`ResultPage` displays the final status and reloads product stock.
+
+```
+Frontend                          Backend                          Provider
+   │                                 │                                │
+   │──POST /transactions────────────►│                                │
+   │◄──transactionId + amounts───────│                                │
+   │                                 │                                │
+   │──POST provider/tokens/cards─────┼───────────────────────────────►│
+   │◄──cardToken─────────────────────┼────────────────────────────────│
+   │                                 │                                │
+   │──POST /transactions/:id/pay────►│──create payment───────────────►│
+   │◄──status: PROCESSING───────────│◄──providerTxId + PENDING──────│
+   │                                 │                                │
+   │──GET /transactions/:id─────────►│──get status───────────────────►│
+   │◄──status: PROCESSING───────────│◄──PENDING─────────────────────│
+   │         ... (poll every 2s)     │                                │
+   │──GET /transactions/:id─────────►│──get status───────────────────►│
+   │◄──status: SUCCESS──────────────│◄──APPROVED────────────────────│
+   │                                 │──decrement stock (atomic)       │
 ```
 
 ---
@@ -435,13 +511,26 @@ cp apps/backend/.env.example apps/backend/.env
 
 ### Why This Stack
 
-| Choice         | Rationale                                                                 |
-| -------------- | ------------------------------------------------------------------------- |
-| **API Gateway**| Managed HTTPS, CORS, throttling, no servers to maintain                   |
-| **Lambda**     | Pay-per-request, auto-scaling, zero idle cost, ARM64 for cost efficiency  |
-| **DynamoDB**   | Serverless, on-demand pricing, single-digit ms latency, zero ops         |
-| **SAM**        | Infrastructure as Code, local testing with `sam local`, one-command deploy|
-| **NestJS on Lambda** | Full DI framework with clean architecture, reusable locally and in cloud |
+**Why SAM** (instead of manual console setup)
+- **Infrastructure as Code** — the entire backend (API + function + tables + IAM) lives in one `template.yaml`
+- **Repeatable deployments** — same commands update the stack reliably
+- **Fast MVP** — minimal moving parts and easy rollback
+
+**Why API Gateway + Lambda**
+- **Cost-effective** — pay per request/execution, ideal for an assessment or MVP
+- **No servers to manage** — deploy code and it's live
+- **Scales automatically** — handles bursts without provisioning
+- **Clear boundary** — API Gateway is the public HTTP entry point; Lambda runs the NestJS app
+
+**Why DynamoDB**
+- **Serverless + cheap** at low traffic (on-demand billing)
+- **Simple data model** suited for this project: Products (PK: `productId`), Transactions (PK: `transactionId`), Settings (PK: `settingsKey`)
+- **Correct concurrency** — atomic stock decrement with `ConditionExpression` prevents overselling without complex locks
+
+**Why this is clean-architecture friendly**
+- Domain and use cases don't depend on AWS
+- AWS-specific code lives exclusively in adapters (DynamoDB repositories, provider HTTP gateway)
+- Switching persistence (in-memory ↔ DynamoDB) is just DI + an env flag (`USE_DYNAMO`)
 
 ### SAM Configuration
 
@@ -451,31 +540,6 @@ The `template.yaml` at the repo root defines all AWS resources:
 - **Lambda Function** — handles all routes via `@vendia/serverless-express`
 - **3 DynamoDB Tables** — Products, Transactions, Settings (all PAY_PER_REQUEST)
 - **IAM Policies** — Lambda gets CRUD access to all three tables
-
-### AWS / SAM Commands
-
-```bash
-# Build the backend for Lambda deployment
-sam build
-
-# Test locally (simulates API Gateway + Lambda)
-sam local start-api
-
-# Deploy to AWS (guided — prompts for stack name, region, params)
-sam deploy --guided
-
-# Deploy with saved config (after first guided deploy)
-sam deploy
-
-# View deployed stack outputs (API URL, etc.)
-sam list stack-outputs --stack-name payment-gateway
-
-# View Lambda logs
-sam logs -n PaymentGatewayFunction --stack-name payment-gateway --tail
-
-# Delete the entire stack
-sam delete --stack-name payment-gateway
-```
 
 ### SAM Parameters
 
@@ -488,6 +552,232 @@ On first `sam deploy --guided`, SAM prompts for these parameters (stored in `sam
 | `WompiIntegritySecret`| Provider integrity secret    |
 
 These are injected as Lambda environment variables. Sensitive values are **not** stored in source control.
+
+---
+
+## Deployment
+
+### Backend (SAM + AWS CLI)
+
+#### Build + deploy
+
+```bash
+# From repo root — first time (guided prompts for stack name, region, params)
+sam build --profile <YOUR_AWS_PROFILE>
+sam deploy --guided --profile <YOUR_AWS_PROFILE>
+
+# Subsequent deploys (uses saved samconfig.toml)
+sam build --profile <YOUR_AWS_PROFILE>
+sam deploy --profile <YOUR_AWS_PROFILE>
+```
+
+#### Inspect Lambda environment variables
+
+```bash
+aws lambda get-function-configuration \
+  --function-name <FUNCTION_NAME> \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --query "Environment.Variables"
+```
+
+#### Tail Lambda logs
+
+```bash
+aws logs tail "/aws/lambda/<FUNCTION_NAME>" \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --since 10m
+```
+
+#### Get DynamoDB table physical names from the stack
+
+```bash
+aws cloudformation describe-stack-resources \
+  --stack-name payment-gateway \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --query "StackResources[?LogicalResourceId=='ProductsTable' || LogicalResourceId=='SettingsTable' || LogicalResourceId=='TransactionsTable'].[LogicalResourceId,PhysicalResourceId]" \
+  --output table
+```
+
+#### Seed DynamoDB (products + global settings)
+
+```bash
+# Product 1
+aws dynamodb put-item \
+  --table-name <PRODUCTS_TABLE_NAME> \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --item '{
+    "productId": {"S":"product-1"},
+    "name": {"S":"Product 1"},
+    "description": {"S":"Description of Product 1"},
+    "priceInCents": {"N":"200000"},
+    "currency": {"S":"COP"},
+    "imageUrl": {"S":"https://picsum.photos/seed/product-1/600/400"},
+    "stock": {"N":"10"}
+  }'
+
+# Product 2
+aws dynamodb put-item \
+  --table-name <PRODUCTS_TABLE_NAME> \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --item '{
+    "productId": {"S":"product-2"},
+    "name": {"S":"Product 2"},
+    "description": {"S":"Description of Product 2"},
+    "priceInCents": {"N":"300000"},
+    "currency": {"S":"COP"},
+    "imageUrl": {"S":"https://picsum.photos/seed/product-2/600/400"},
+    "stock": {"N":"5"}
+  }'
+
+# Global settings
+aws dynamodb put-item \
+  --table-name <SETTINGS_TABLE_NAME> \
+  --region us-east-1 \
+  --profile <YOUR_AWS_PROFILE> \
+  --item '{
+    "settingsKey": {"S":"global"},
+    "baseFeeInCents": {"N":"2500"},
+    "deliveryFeeInCents": {"N":"5000"}
+  }'
+```
+
+#### Delete the entire stack
+
+```bash
+sam delete --stack-name payment-gateway --profile <YOUR_AWS_PROFILE>
+```
+
+---
+
+### Frontend (S3 + CloudFront with OAC)
+
+The frontend is deployed as a static SPA to a **private S3 bucket** served through **CloudFront** with an Origin Access Control (OAC).
+
+#### Build
+
+```bash
+cd apps/frontend
+npm install
+npm run build
+```
+
+#### Upload to S3
+
+```bash
+BUCKET=<YOUR_BUCKET_NAME>
+aws s3 sync dist "s3://$BUCKET" --delete --profile <YOUR_AWS_PROFILE>
+```
+
+#### Create Origin Access Control (OAC)
+
+```bash
+aws cloudfront create-origin-access-control \
+  --profile <YOUR_AWS_PROFILE> \
+  --origin-access-control-config '{
+    "Name": "payment-gateway-frontend-oac",
+    "Description": "OAC for private S3 frontend bucket",
+    "SigningProtocol": "sigv4",
+    "SigningBehavior": "always",
+    "OriginAccessControlOriginType": "s3"
+  }'
+```
+
+#### Create CloudFront distribution
+
+```bash
+BUCKET=<YOUR_BUCKET_NAME>
+OAC_ID=<OAC_ID>
+
+aws cloudfront create-distribution \
+  --profile <YOUR_AWS_PROFILE> \
+  --distribution-config '{
+    "CallerReference": "'"$(date +%s)"'",
+    "Origins": {
+      "Quantity": 1,
+      "Items": [{
+        "Id": "s3-origin",
+        "DomainName": "'"$BUCKET"'.s3.us-east-1.amazonaws.com",
+        "OriginAccessControlId": "'"$OAC_ID"'",
+        "S3OriginConfig": { "OriginAccessIdentity": "" }
+      }]
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "s3-origin",
+      "ViewerProtocolPolicy": "redirect-to-https",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET","HEAD"],
+        "CachedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] }
+      },
+      "Compress": true,
+      "ForwardedValues": {
+        "QueryString": true,
+        "Cookies": { "Forward": "none" }
+      },
+      "MinTTL": 0
+    },
+    "CustomErrorResponses": {
+      "Quantity": 2,
+      "Items": [
+        { "ErrorCode": 403, "ResponseCode": "200", "ResponsePagePath": "/index.html" },
+        { "ErrorCode": 404, "ResponseCode": "200", "ResponsePagePath": "/index.html" }
+      ]
+    },
+    "Comment": "payment-gateway frontend (private S3 + OAC)",
+    "Enabled": true,
+    "DefaultRootObject": "index.html"
+  }'
+```
+
+> The `CustomErrorResponses` redirect 403/404 to `/index.html` so that SPA client-side routing works correctly.
+
+#### Attach bucket policy (allow CloudFront to read)
+
+```bash
+BUCKET=<YOUR_BUCKET_NAME>
+DIST_ID=<DISTRIBUTION_ID>
+
+DIST_ARN=$(aws cloudfront get-distribution \
+  --id "$DIST_ID" \
+  --profile <YOUR_AWS_PROFILE> \
+  --query "Distribution.ARN" \
+  --output text)
+
+cat > /tmp/s3-oac-policy.json <<JSON
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowCloudFrontReadOnly",
+      "Effect": "Allow",
+      "Principal": { "Service": "cloudfront.amazonaws.com" },
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::$BUCKET/*",
+      "Condition": { "StringEquals": { "AWS:SourceArn": "$DIST_ARN" } }
+    }
+  ]
+}
+JSON
+
+aws s3api put-bucket-policy \
+  --bucket "$BUCKET" \
+  --policy file:///tmp/s3-oac-policy.json \
+  --profile <YOUR_AWS_PROFILE>
+```
+
+#### Update frontend after changes
+
+```bash
+cd apps/frontend
+npm run build
+aws s3 sync dist "s3://<YOUR_BUCKET_NAME>" --delete --profile <YOUR_AWS_PROFILE>
+aws cloudfront create-invalidation --distribution-id <DIST_ID> --paths "/*" --profile <YOUR_AWS_PROFILE>
+```
 
 ---
 
