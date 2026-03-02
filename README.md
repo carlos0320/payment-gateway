@@ -87,25 +87,70 @@ npm --workspace apps/frontend run dev
 
 The Vite dev server proxies `/api/*` requests to `http://localhost:3000`, so both apps work together seamlessly during development.
 
-### Run tests
+### Root-level scripts
 
-```bash
-# Backend tests
-npm run test:backend
+The root `package.json` provides shortcuts for the backend:
 
-# Frontend tests
-npm --workspace apps/frontend run test
+| Script              | Command                                       |
+| ------------------- | --------------------------------------------- |
+| `npm run dev:backend`  | `npm --workspace apps/backend run start:dev` |
+| `npm run test:backend` | `npm --workspace apps/backend run test`      |
+| `npm run lint:backend` | `npm --workspace apps/backend run lint`      |
 
-# With coverage
-npm --workspace apps/backend run test:cov
-npm --workspace apps/frontend run test:cov
-```
+### Backend scripts (`apps/backend/`)
 
-### Lint
+| Script                   | Command                           | Description                       |
+| ------------------------ | --------------------------------- | --------------------------------- |
+| `npm run build`          | `nest build`                      | Compile TypeScript                |
+| `npm run start`          | `nest start`                      | Start server                      |
+| `npm run start:dev`      | `nest start --watch`              | Start with hot reload             |
+| `npm run start:debug`    | `nest start --debug --watch`      | Start with debugger attached      |
+| `npm run start:prod`     | `node dist/main`                  | Start from compiled output        |
+| `npm run test`           | `jest`                            | Run unit tests                    |
+| `npm run test:watch`     | `jest --watch`                    | Run tests in watch mode           |
+| `npm run test:cov`       | `jest --coverage`                 | Run tests with coverage report    |
+| `npm run test:debug`     | `node --inspect-brk ... jest`     | Run tests with debugger           |
+| `npm run test:e2e`       | `jest --config ./test/jest-e2e.json` | Run end-to-end tests           |
+| `npm run lint`           | `eslint "{src,apps,libs,test}/**/*.ts" --fix` | Lint + auto-fix     |
+| `npm run format`         | `prettier --write "src/**/*.ts"`  | Format code with Prettier         |
 
-```bash
-npm run lint:backend
-```
+### Frontend scripts (`apps/frontend/`)
+
+| Script                   | Command             | Description                       |
+| ------------------------ | ------------------- | --------------------------------- |
+| `npm run dev`            | `vite`              | Start dev server with hot reload  |
+| `npm run build`          | `vite build`        | Production build (minified)       |
+| `npm run preview`        | `vite preview`      | Preview production build locally  |
+| `npm run test`           | `jest`              | Run unit tests                    |
+| `npm run test:cov`       | `jest --coverage`   | Run tests with coverage report    |
+| `npm run test:watch`     | `jest --watch`      | Run tests in watch mode           |
+
+> Run frontend scripts with `npm --workspace apps/frontend run <script>` from the repo root, or `cd apps/frontend && npm run <script>`.
+
+### Test Coverage
+
+> **Column definitions:** **Stmts** = percentage of executable statements reached | **Branch** = percentage of `if/else`, ternary, and `switch` branches taken | **Funcs** = percentage of declared functions called | **Lines** = percentage of source lines executed.
+
+#### Backend — 7 suites, 44 tests
+
+| Layer                          | Stmts  | Branch | Funcs | Lines |
+| ------------------------------ | ------ | ------ | ----- | ----- |
+| **Domain** (entities + errors) | 100%   | 100%   | 100%  | 100%  |
+| **Use Cases** (application)    | 100%   | 92.85% | 100%  | 100%  |
+| **Overall** (domain + app)     | 96.64% | 97.30% | 100%  | 100%  |
+
+> Coverage scoped to **domain + application layers** — the code that holds business logic. Adapters (controllers, DynamoDB repositories, provider HTTP client) are infrastructure code and are intentionally excluded from unit test coverage, consistent with the hexagonal architecture testing strategy.
+
+#### Frontend — 5 suites, 46 tests
+
+| Module                  | Stmts   | Branch  | Funcs   | Lines   |
+| ----------------------- | ------- | ------- | ------- | ------- |
+| **API** (backend + wompi) | 83.33% | 0%     | 100%    | 83.33%  |
+| **Store modules** (checkout + products) | 100% | 85.18% | 100% | 100% |
+| **Store plugins** (persistCheckout) | 100% | 80% | 100% | 100% |
+| **Overall**             | 98.36%  | 79.59%  | 100%    | 98.19%  |
+
+> Frontend has **98%+ statement coverage** across the Vuex store and API layers. The only uncovered file is `http.js` (Axios instance factory), which is a thin config wrapper.
 
 ---
 
@@ -229,7 +274,6 @@ apps/backend/src/
 │   │   ├── settings-repository.port.ts
 │   │   ├── wompi-gateway.port.ts
 │   │   ├── id-generator.port.ts
-│   │   └── clock.port.ts
 │   ├── use-cases/
 │   │   ├── list-products/
 │   │   ├── get-product/
