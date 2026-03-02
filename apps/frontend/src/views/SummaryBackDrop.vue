@@ -2,17 +2,17 @@
   <div class="backdrop" @click.self="!loading && close()">
     <div class="sheet">
       <div class="grab"/>
-
+    
       <div class="header">
         <h2 class="title">Summary</h2>
-        <button class="x"
-            @click="back" aria-label="Back"
-            :disabled="paying || status==='PROCESSING'" 
-        >
-            ←
+        <button
+            class="backBtn"
+            @click="back"
+            aria-label="Back"
+            :disabled="paying || status==='PROCESSING'"
+            >←
         </button>
-      </div>
-
+        </div>
       <div class="content" v-if="amounts">
         <div class="line">
           <span>Product amount</span>
@@ -164,6 +164,48 @@ async function payNow() {
 }
 
 .primary:disabled{ opacity:.55; }
+
+.backBtn{
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #e9e9e9;
+  background: #f6f6f6;
+  color: #111;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+.backBtn:hover{
+  background: #efefef;
+  border-color: #dedede;
+}
+
+.backBtn:active{
+  transform: scale(.96);
+  background: #e9e9e9;
+}
+
+.backBtn:focus-visible{
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(17,17,17,.18);
+}
+
+.backBtn:disabled{
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.backIcon{
+  width: 20px;
+  height: 20px;
+  display: block;
+}
 
 .error{ color:#b00020; font-size:13px; margin:0; }
 </style>

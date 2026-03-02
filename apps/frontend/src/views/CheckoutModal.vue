@@ -7,21 +7,26 @@
       <!-- Header always visible -->
       <div class="header">
         <button
-          v-if="formStep === 'PAYMENT'"
-          class="iconBtn"
-          @click="goBackToDelivery"
-          aria-label="Back"
-        >
-          ←
-        </button>
+					v-if="formStep === 'PAYMENT'"
+					class="navBtn"
+					@click="goBackToDelivery"
+					aria-label="Back"
+				>
+					←
+				</button>
 
         <h2 class="title">
           {{ formStep === 'DELIVERY' ? 'Delivery details' : 'Pay with credit card' }}
         </h2>
 
-        <button class="iconBtn" @click="closeModal" aria-label="Close" :disabled="loading">
-          ✕
-        </button>
+				<button
+					class="closeBtn"
+					@click="closeModal"
+					aria-label="Close"
+					:disabled="loading"
+				>
+					<span aria-hidden="true">✕</span>
+				</button>
       </div>
 
       <p v-if="resumeNotice" class="hint">{{ resumeNotice }}</p>
@@ -125,45 +130,47 @@
             </div>
           </section>
 
-          <section class="section">
-            <h3 class="h3">Contracts</h3>
+         <section class="section">
+						<h3 class="h3">Contracts</h3>
 
-            <div class="contracts">
-              <a
-                class="link"
-                :href="contracts.endUserPolicyUrl || '#'"
-                target="_blank"
-                rel="noreferrer"
-                :class="{ disabled: !contracts.endUserPolicyUrl }"
-                :aria-disabled="!contracts.endUserPolicyUrl"
-								@click="onEndUserPolicyClick"
-              >
-                End user policy (PDF)
-              </a>
+						<div class="contractsSimple">
+							<div class="contractRow">
+								
 
-              <label class="check">
-                <input type="checkbox" v-model="accept.policy" :disabled="!contracts.endUserPolicyUrl" />
-                I accept the end user policy
-              </label>
+								<label class="contractCheck">
+									<input type="checkbox" v-model="accept.policy" :disabled="!contracts.endUserPolicyUrl" />
+									<a
+									class="contractLink"
+									:href="contracts.endUserPolicyUrl || '#'"
+									target="_blank"
+									rel="noreferrer"
+									:class="{ disabled: !contracts.endUserPolicyUrl }"
+									:aria-disabled="!contracts.endUserPolicyUrl"
+									@click="onEndUserPolicyClick"
+								>
+									I accept the policy
+								</a>
+								</label>
+							</div>
 
-              <a
-                class="link"
-                :href="contracts.personalDataAuthUrl || '#'"
-                target="_blank"
-                rel="noreferrer"
-                :class="{ disabled: !contracts.personalDataAuthUrl }"
-                :aria-disabled="!contracts.personalDataAuthUrl"
-                @click="onPersonalDataAuthUrlClick"
-              >
-                Personal data authorization (PDF)
-              </a>
-
-              <label class="check">
-                <input type="checkbox" v-model="accept.personal" :disabled="!contracts.personalDataAuthUrl" />
-                I accept personal data processing
-              </label>
-            </div>
-          </section>
+							<div class="contractRow">
+								<label class="contractCheck">
+									<input type="checkbox" v-model="accept.personal" :disabled="!contracts.personalDataAuthUrl" />
+									<a
+									class="contractLink"
+									:href="contracts.personalDataAuthUrl || '#'"
+									target="_blank"
+									rel="noreferrer"
+									:class="{ disabled: !contracts.personalDataAuthUrl }"
+									:aria-disabled="!contracts.personalDataAuthUrl"
+									@click="onPersonalDataAuthUrlClick"
+								>
+									I accept personal data processing
+								</a>
+								</label>
+							</div>
+						</div>
+					</section>
         </template>
 
         <p class="errorMsg" v-if="error">{{ error }}</p>
@@ -390,12 +397,12 @@ function goToSummary() {
 }
 
 .title{
+  text-align: center;
   font-size:16px;
   margin:0;
   color:#111;
   font-weight:800;
 }
-
 .iconBtn{
   border:1px solid #e6e6e6;
   background:#fff;
@@ -510,6 +517,67 @@ function goToSummary() {
   pointer-events: none;
 }
 
+.closeBtn{
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #e9e9e9;
+  background: #f6f6f6;
+  color: #111;
+  cursor: pointer;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  font-size: 18px;
+  line-height: 1;
+
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+.contractsSimple{
+  display:grid;
+  gap: 16px;
+}
+
+.contractRow{
+  display:grid;
+  gap: 10px;
+}
+
+.contractLink{
+  font-size: 12px;
+  font-weight: 400;
+  color: #0b57d0;
+  text-decoration: none;
+}
+
+.contractLink:hover{
+  text-decoration: underline;
+}
+
+.contractLink.disabled{
+  opacity: .5;
+  pointer-events: none;
+  text-decoration: none;
+}
+
+.contractCheck{
+  display:flex;
+  align-items:flex-start;
+  gap: 12px;
+  font-size: 15px;
+  color:white;
+  line-height: 1.35;
+}
+
+.contractCheck input{
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
 .check{
   font-size:13px;
   display:flex;
@@ -533,10 +601,47 @@ function goToSummary() {
   height:44px;
   border:none;
   border-radius:14px;
-  background:#111;
   color:#fff;
   font-weight:800;
   margin-top: 10px;
+}
+
+.contractCheck input[type="checkbox"]{
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+
+  width: 18px;
+  height: 18px;
+  border: 1px solid #cfcfcf;
+  border-radius: 4px;
+  background: #fff;
+  margin-top: 2px;
+
+  display: inline-grid;
+  place-content: center;
+  cursor: pointer;
+}
+
+.contractCheck input[type="checkbox"]:checked{
+  background: #111;
+  border-color: #111;
+}
+
+.contractCheck input[type="checkbox"]:checked::after{
+  content: "";
+  width: 9px;
+  height: 5px;
+  border: 2px solid #fff;
+  border-top: 0;
+  border-right: 0;
+  transform: rotate(-45deg);
+  margin-top: -1px;
+}
+
+.contractCheck input[type="checkbox"]:disabled{
+  opacity: .5;
+  cursor: not-allowed;
 }
 
 .primary:disabled{ opacity:.45; }
@@ -551,5 +656,34 @@ function goToSummary() {
   margin: 6px 0 0;
   font-size: 12px;
   color:#666;
+}
+
+
+
+
+.navBtn{
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1px solid #e9e9e9;
+  background: #f6f6f6;
+  color:#111;
+  cursor:pointer;
+
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+
+  transition: transform .08s ease, background .15s ease, border-color .15s ease;
+}
+
+.navBtn:hover{ background:#efefef; border-color:#dedede; }
+.navBtn:active{ transform: scale(.96); background:#e9e9e9; }
+.navBtn:disabled{ opacity:.5; cursor:not-allowed; }
+
+.navIcon{
+  width: 20px;
+  height: 20px;
+  display:block;
 }
 </style>

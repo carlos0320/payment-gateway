@@ -7,7 +7,7 @@
     <div v-else-if="error" class="error">{{ error }}</div>
 
     <div v-else class="grid">
-      <article v-for="p in products" :key="p.productId" class="card">
+      <section v-for="p in products" :key="p.productId" class="card">
         <img :src="p.imageUrl" class="img" alt="" />
         <div class="body">
           <div class="row">
@@ -35,7 +35,7 @@
               Pay with credit card
             </button>
         </div>
-      </article>
+      </section>
     </div>
   </section>
 </template>
@@ -110,8 +110,10 @@ function formatCOP(cents) {
 }
 
 .grid {
-    display: grid;
-    gap: 12px;
+  display: grid;
+  gap: 16px;
+
+  grid-template-columns: 1fr;
 }
 
 .card {
@@ -195,13 +197,26 @@ function formatCOP(cents) {
 }
 
 .pay {
-    flex: 1;
-    height: 36px;
-    border-radius: 10px;
-    border: none;
-    background: #111;
-    color: #fff;
-    margin-top: 10px;
+	width: 100%;
+  height: 44px;
+  border-radius: 10px;
+  border: none;
+  background: #111;
+  color: #fff;
+  margin-top: 10px;
+}
+
+.btn,
+.pay {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.actions {
+	margin: 5px 0 5px 0;
+  justify-content: center;
 }
 
 .pay:disabled {
@@ -214,5 +229,31 @@ function formatCOP(cents) {
 
 .error {
     color: #b00020;
+}
+
+/* >= 600px: 2 columns */
+@media (min-width: 600px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* >= 900px: 3 columns */
+@media (min-width: 900px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* >= 1200px: 4 columns */
+@media (min-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+section {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
 }
 </style>

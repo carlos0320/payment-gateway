@@ -68,13 +68,6 @@ export class PayTransactionUseCase {
     const signatureRaw = `${reference}${amountInCents}${currency}${this.integritySecret}`;
     const signature = createHash('sha256').update(signatureRaw).digest('hex');
 
-    console.log('PAY DEBUG***', {
-      reference,
-      amountInCents,
-      currency,
-      totals: tx.amounts,
-    });
-
     const wompiCreated = await this.wompi.createCardTransaction({
       acceptance_token: acceptanceToken,
       accept_personal_auth: acceptPersonalAuth,

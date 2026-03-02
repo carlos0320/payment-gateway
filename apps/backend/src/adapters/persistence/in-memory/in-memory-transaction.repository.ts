@@ -9,7 +9,6 @@ export class InMemoryTransactionRepository implements TransactionRepositoryPort 
   }
 
   async findById(transactionId: string): Promise<Transaction | null> {
-    console.log('TRANSACTIONS!!!!', store);
     return store.get(transactionId) ?? null;
   }
 

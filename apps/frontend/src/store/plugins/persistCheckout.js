@@ -5,6 +5,21 @@ export function persistCheckoutPlugin(store) {
   subscribeToCheckoutChanges(store)
 }
 
+function isBlank(value) {
+  return value == null || String(value).trim() === ''
+}
+
+function isCardMissing(card) {
+  return (
+    !card ||
+    isBlank(card.number) ||
+    isBlank(card.cvc) ||
+    isBlank(card.expMonth) ||
+    isBlank(card.expYear) ||
+    isBlank(card.cardHolder)
+  )
+}
+
 // refresh checkout -> persist on localstorage -> dont include sensible data
 function refreshCheckout(store) {
   try {
@@ -15,16 +30,11 @@ function refreshCheckout(store) {
 
     store.commit('checkout/refresh', savedState)
     const card = store.state.checkout.card
-    const cardMissing =
-    !card ||
-    !card.number ||
-    !card.cvc ||
-    !card.expMonth ||
-    !card.expYear ||
-    !card.cardHolder
+    const cardMissing = isCardMissing(card)
+
 
     // If user is at SUMMARY but card is missing, send them back to FORM to re-enter card.
-    if (saved.step === 'SUMMARY' && cardMissing) {
+    if (savedState.step === 'SUMMARY' && cardMissing) {
         store.commit('checkout/setResumeNotice', 'For security reasons, please re-enter your card details.')
         store.commit('checkout/setStep', 'FORM')
     }
